@@ -1,4 +1,4 @@
-# Lemon · Transferencias Pull — Prototipo v2
+# Lemon · Transferencias Pull
 
 Flujo completo: Home → iOS Lock Screen + Push → Modal de autorización → Biometría → Success → Actividad → Notificaciones
 
