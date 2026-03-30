@@ -5,179 +5,144 @@ import { fmtARS, fmtParts } from "@/lib/format";
 
 type Screen = "home" | "lockscreen" | "biometric" | "modal" | "success" | "expired" | "insufficient" | "activity_mov" | "activity_notif";
 type SimMode = "normal" | "expired" | "insufficient" | "double" | "pending";
-type NotifState = "pending" | "success" | "rejected" | "expired" | "insufficient";
+type NotifType = "pending" | "success" | "rejected" | "expired" | "insufficient";
 
-interface Pull {
-  bankName: string;
-  amount: number;
-  concept: string;
-  cbu: string;
-  recipientName: string;
-  currentBalance: number;
-}
+interface Pull { bankName: string; amount: number; concept: string; cbu: string; recipientName: string; currentBalance: number; }
+interface Notif { id: string; type: NotifType; pull: Pull; time: string; }
 
-const PULL_1: Pull = {
-  bankName: "Brubank",
-  amount: 500000,
-  concept: "Fondeo cuenta propia",
-  cbu: "1430001713001150420010",
-  recipientName: "Jeronimo Campero",
-  currentBalance: 265215.22,
-};
+const PULL_1: Pull = { bankName: "Brubank", amount: 500000, concept: "Fondeo cuenta propia", cbu: "1430001713001150420010", recipientName: "Jeronimo Campero", currentBalance: 265215.22 };
+const PULL_2: Pull = { bankName: "Banco Galicia", amount: 120000, concept: "Fondeo cuenta propia", cbu: "0070999020000008210374", recipientName: "Jeronimo Campero", currentBalance: 765215.22 };
 
-const PULL_2: Pull = {
-  bankName: "Banco Galicia",
-  amount: 120000,
-  concept: "Fondeo cuenta propia",
-  cbu: "0070999020000008210374",
-  recipientName: "Jeronimo Campero",
-  currentBalance: 765215.22,
-};
+function now() { return new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false }); }
+let nid = 0;
+function mkNotif(type: NotifType, pull: Pull): Notif { return { id: `n-${++nid}`, type, pull, time: now() }; }
 
 export default function Page() {
   const [screen, setScreen] = useState<Screen>("home");
-  const [showNotif, setShowNotif] = useState(false);
+  const [showPush, setShowPush] = useState(false);
   const [showSheet, setShowSheet] = useState(false);
   const [mode, setMode] = useState<SimMode>("normal");
   const [activePull, setActivePull] = useState<Pull>(PULL_1);
-  const [outcomes, setOutcomes] = useState<Array<{ pull: Pull; result: "confirmed" | "rejected" | "insufficient" }>>([]);
   const [queuedPull, setQueuedPull] = useState<Pull | null>(null);
+  const [outcomes, setOutcomes] = useState<Array<{ pull: Pull; result: "confirmed" | "rejected" | "insufficient" }>>([]);
 
-  // For interactive notifications
-  const [notifSheet, setNotifSheet] = useState<NotifState | null>(null);
-  const [notifToggle, setNotifToggle] = useState<NotifState>("pending");
+  // Notification log — chronological, newest first when displayed
+  const [notifs, setNotifs] = useState<Notif[]>([]);
+  const [tappedNotif, setTappedNotif] = useState<Notif | null>(null);
+
+  const addNotif = useCallback((type: NotifType, pull: Pull) => {
+    setNotifs(prev => [mkNotif(type, pull), ...prev]);
+  }, []);
 
   const restart = useCallback(() => {
-    setScreen("home");
-    setShowNotif(false);
-    setShowSheet(false);
-    setMode("normal");
-    setActivePull(PULL_1);
-    setOutcomes([]);
-    setQueuedPull(null);
-    setNotifSheet(null);
-    setNotifToggle("pending");
+    setScreen("home"); setShowPush(false); setShowSheet(false);
+    setMode("normal"); setActivePull(PULL_1); setOutcomes([]);
+    setQueuedPull(null); setNotifs([]); setTappedNotif(null); nid = 0;
   }, []);
 
   const startFlow = useCallback((m: SimMode) => {
-    setMode(m);
-    setOutcomes([]);
-    setQueuedPull(null);
-    setActivePull(PULL_1);
-    setNotifSheet(null);
+    setMode(m); setOutcomes([]); setQueuedPull(null);
+    setActivePull(PULL_1); setNotifs([]); setTappedNotif(null); nid = 0;
 
     if (m === "pending") {
-      // Go straight to activity with notifications
+      // Go straight to notificaciones with a pending notif
+      addNotif("pending", PULL_1);
       setScreen("activity_notif");
-      setNotifToggle("pending");
       return;
     }
 
-    setScreen("lockscreen");
-    setShowNotif(false);
-    setShowSheet(false);
+    setScreen("lockscreen"); setShowPush(false); setShowSheet(false);
     if (m === "double") setQueuedPull(PULL_2);
-    setTimeout(() => setShowNotif(true), 1500);
-  }, []);
 
-  const tapNotif = useCallback(() => {
-    setShowNotif(false);
+    // Push arrives → add pending notif
+    setTimeout(() => {
+      setShowPush(true);
+      addNotif("pending", PULL_1);
+      if (m === "double") {
+        setTimeout(() => addNotif("pending", PULL_2), 700);
+      }
+    }, 1500);
+  }, [addNotif]);
+
+  const tapPush = useCallback(() => {
+    setShowPush(false);
     setScreen("biometric");
     setTimeout(() => {
       if (mode === "expired") {
+        addNotif("expired", activePull);
         setScreen("expired");
       } else {
         setScreen("modal");
         setTimeout(() => setShowSheet(true), 400);
       }
     }, 2200);
-  }, [mode]);
+  }, [mode, activePull, addNotif]);
 
   const handleConfirm = useCallback(() => {
     setShowSheet(false);
     if (mode === "insufficient") {
       setTimeout(() => {
+        addNotif("insufficient", activePull);
         setOutcomes(prev => [...prev, { pull: activePull, result: "insufficient" }]);
         setScreen("insufficient");
       }, 800);
       return;
     }
+    addNotif("success", activePull);
     setOutcomes(prev => [...prev, { pull: activePull, result: "confirmed" }]);
     setScreen("success");
     setTimeout(() => {
       if (queuedPull) {
-        setActivePull(queuedPull);
-        setQueuedPull(null);
+        setActivePull(queuedPull); setQueuedPull(null);
         setScreen("modal");
         setTimeout(() => setShowSheet(true), 400);
-      } else {
-        setScreen("activity_mov");
-      }
+      } else { setScreen("activity_mov"); }
     }, 2500);
-  }, [mode, activePull, queuedPull]);
+  }, [mode, activePull, queuedPull, addNotif]);
 
   const handleReject = useCallback(() => {
     setShowSheet(false);
+    addNotif("rejected", activePull);
     setOutcomes(prev => [...prev, { pull: activePull, result: "rejected" }]);
     if (queuedPull) {
-      setActivePull(queuedPull);
-      setQueuedPull(null);
-      setTimeout(() => {
-        setScreen("modal");
-        setTimeout(() => setShowSheet(true), 400);
-      }, 300);
-    } else {
-      setScreen("activity_notif");
-      setNotifToggle("rejected");
-    }
-  }, [activePull, queuedPull]);
+      setActivePull(queuedPull); setQueuedPull(null);
+      setTimeout(() => { setScreen("modal"); setTimeout(() => setShowSheet(true), 400); }, 300);
+    } else { setScreen("activity_notif"); }
+  }, [activePull, queuedPull, addNotif]);
 
   const handleInsufficientDismiss = useCallback(() => {
     if (queuedPull) {
-      setActivePull(queuedPull);
-      setQueuedPull(null);
-      setScreen("modal");
-      setTimeout(() => setShowSheet(true), 400);
-    } else {
-      setScreen("activity_notif");
-      setNotifToggle("insufficient");
-    }
+      setActivePull(queuedPull); setQueuedPull(null);
+      setScreen("modal"); setTimeout(() => setShowSheet(true), 400);
+    } else { setScreen("activity_notif"); }
   }, [queuedPull]);
 
-  // Handle tap on notification card in activity
-  const handleNotifTap = useCallback((state: NotifState) => {
-    if (state === "pending") {
-      // Open confirmation sheet over home
-      setNotifSheet(null);
-      setScreen("modal");
-      setTimeout(() => setShowSheet(true), 300);
+  // Tap pending notif in activity → open confirmation sheet
+  const handleNotifTap = useCallback((n: Notif) => {
+    if (n.type === "pending") {
+      setActivePull(n.pull); setMode("pending");
+      setScreen("modal"); setTimeout(() => setShowSheet(true), 300);
     } else {
-      setNotifSheet(state);
+      setTappedNotif(n);
     }
   }, []);
 
-  const closeNotifSheet = useCallback(() => {
-    setNotifSheet(null);
-  }, []);
-
-  // From pending notification → confirm → go to success flow
   const handleConfirmFromNotif = useCallback(() => {
     setShowSheet(false);
-    setOutcomes([{ pull: PULL_1, result: "confirmed" }]);
+    addNotif("success", activePull);
+    setOutcomes([{ pull: activePull, result: "confirmed" }]);
     setScreen("success");
-    setTimeout(() => {
-      setScreen("activity_mov");
-    }, 2500);
-  }, []);
+    setTimeout(() => setScreen("activity_mov"), 2500);
+  }, [activePull, addNotif]);
 
   const handleRejectFromNotif = useCallback(() => {
     setShowSheet(false);
-    setOutcomes([{ pull: PULL_1, result: "rejected" }]);
+    addNotif("rejected", activePull);
+    setOutcomes([{ pull: activePull, result: "rejected" }]);
     setScreen("activity_notif");
-    setNotifToggle("rejected");
-  }, []);
+  }, [activePull, addNotif]);
 
-  const isIdle = screen === "home" && outcomes.length === 0 && mode !== "pending";
+  const isIdle = screen === "home" && notifs.length === 0;
   const showRestart = screen === "activity_mov" || screen === "activity_notif" || screen === "expired";
 
   return (
@@ -201,23 +166,19 @@ export default function Page() {
             ? <SheetOverlay show={showSheet} pull={activePull} onConfirm={handleConfirmFromNotif} onReject={handleRejectFromNotif} />
             : <SheetOverlay show={showSheet} pull={activePull} onConfirm={handleConfirm} onReject={handleReject} />
         )}
-        {screen === "expired" && <ExpiredSheet pull={activePull} show={true} onBack={restart} />}
-        {screen === "insufficient" && <InsufficientSheet pull={activePull} show={true} onBack={handleInsufficientDismiss} />}
-        {screen === "lockscreen" && <LockScreen showNotif={showNotif} onTapNotif={tapNotif} pull={PULL_1} queuedPull={mode === "double" ? PULL_2 : null} />}
+        {screen === "expired" && <ExpiredSheet pull={activePull} show onBack={restart} />}
+        {screen === "insufficient" && <InsufficientSheet pull={activePull} show onBack={handleInsufficientDismiss} />}
+        {screen === "lockscreen" && <LockScreen showPush={showPush} onTapPush={tapPush} pull={PULL_1} queuedPull={mode === "double" ? PULL_2 : null} />}
         {screen === "biometric" && <BiometricScreen />}
         {screen === "success" && <SuccessScreen pull={activePull} />}
-        {screen === "activity_mov" && <ActivityMovScreen outcomes={outcomes} onNotif={() => { setScreen("activity_notif"); setNotifToggle("pending"); }} />}
+        {screen === "activity_mov" && <ActivityMovScreen outcomes={outcomes} onNotif={() => setScreen("activity_notif")} />}
         {screen === "activity_notif" && (
           <ActivityNotifScreen
-            outcomes={outcomes}
+            notifs={notifs}
             onMov={() => setScreen("activity_mov")}
-            toggle={notifToggle}
-            onToggle={setNotifToggle}
             onTapNotif={handleNotifTap}
-            notifSheet={notifSheet}
-            onCloseSheet={closeNotifSheet}
-            pull={PULL_1}
-            mode={mode}
+            tappedNotif={tappedNotif}
+            onCloseSheet={() => setTappedNotif(null)}
           />
         )}
 
@@ -225,8 +186,7 @@ export default function Page() {
       </div>
 
       {showRestart && (
-        <button onClick={restart}
-          className="flex items-center gap-2 px-6 py-3 rounded-2xl border border-[#444] text-[#999] text-[14px] font-medium tracking-lemon active:scale-[0.97] transition-transform">
+        <button onClick={restart} className="flex items-center gap-2 px-6 py-3 rounded-2xl border border-[#444] text-[#999] text-[14px] font-medium tracking-lemon active:scale-[0.97] transition-transform">
           <RestartIcon /> Reiniciar experiencia
         </button>
       )}
@@ -235,86 +195,46 @@ export default function Page() {
 }
 
 function SimBtn({ label, green, onClick }: { label: string; green?: boolean; onClick: () => void }) {
-  return (
-    <button onClick={onClick}
-      className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl font-medium text-[13px] tracking-lemon active:scale-[0.97] transition-transform ${green ? "" : "border border-[#444] text-[#999]"}`}
-      style={green ? { background: "#00f068", color: "#000" } : {}}>
-      {green && <BellIcon color="black" />}{label}
-    </button>
-  );
+  return <button onClick={onClick} className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl font-medium text-[13px] tracking-lemon active:scale-[0.97] transition-transform ${green ? "" : "border border-[#444] text-[#999]"}`} style={green ? { background: "#00f068", color: "#000" } : {}}>{green && <BellIcon color="black" />}{label}</button>;
 }
 
-/* ================================================================
-   HOME
-   ================================================================ */
+/* ================================================================ HOME ================================================================ */
 function HomeContent({ pull }: { pull: Pull }) {
   return (
     <div className="h-full bg-black flex flex-col">
       <StatusBar />
       <div className="flex items-center justify-between px-5 pt-2 pb-4">
         <div className="flex items-center gap-2.5">
-          <div className="w-[42px] h-[42px] rounded-full bg-gradient-to-br from-purple-500 to-blue-400 flex items-center justify-center border-2 border-[#333]">
-            <span className="text-white text-[14px] font-bold">JC</span>
-          </div>
-          <div className="bg-[#1a1a1a] rounded-full px-3.5 py-1.5 border border-[#333]">
-            <span className="text-white text-[14px] font-medium tracking-lemon">$jeronimo</span>
-          </div>
+          <div className="w-[42px] h-[42px] rounded-full bg-gradient-to-br from-purple-500 to-blue-400 flex items-center justify-center border-2 border-[#333]"><span className="text-white text-[14px] font-bold">JC</span></div>
+          <div className="bg-[#1a1a1a] rounded-full px-3.5 py-1.5 border border-[#333]"><span className="text-white text-[14px] font-medium tracking-lemon">$jeronimo</span></div>
         </div>
-        <div className="flex items-center gap-2">
-          <C40><SearchIcon /></C40>
-          <div className="relative"><C40><BellIcon color="#999" /></C40><div className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-[#E24B4A]" /></div>
-        </div>
+        <div className="flex items-center gap-2"><C40><SearchIcon /></C40><div className="relative"><C40><BellIcon color="#999" /></C40><div className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-[#E24B4A]" /></div></div>
       </div>
       <div className="px-5 mb-5">
         <p className="text-t-secondary text-[13px] tracking-lemon mb-1">Total billetera</p>
-        <div className="flex items-baseline gap-2">
-          <span className="text-white text-[42px] font-bold tracking-tight leading-none">{fmtParts(pull.currentBalance / 1476).int}<span className="text-t-secondary text-[24px]">,{fmtParts(pull.currentBalance / 1476).dec}</span></span>
-          <span className="text-t-secondary text-[18px] font-medium">USDT</span>
-        </div>
+        <div className="flex items-baseline gap-2"><span className="text-white text-[42px] font-bold tracking-tight leading-none">{fmtParts(pull.currentBalance / 1476).int}<span className="text-t-secondary text-[24px]">,{fmtParts(pull.currentBalance / 1476).dec}</span></span><span className="text-t-secondary text-[18px] font-medium">USDT</span></div>
         <p className="text-t-tertiary text-[14px] tracking-lemon mt-0.5">{fmtARS(pull.currentBalance)} ARS</p>
       </div>
-      <div className="flex gap-4 px-5 mb-6">
-        <ActionBtn icon={<ArrowDown />} label="DEPOSITAR" active />
-        <ActionBtn icon={<RefreshSvg />} label="CAMBIAR" />
-        <ActionBtn icon={<ArrowUp />} label="ENVIAR" />
-      </div>
-      <div className="mx-5 bg-[#1a1a1a] rounded-2xl p-4 mb-6 border border-[#222]">
-        <p className="text-white text-[15px] font-medium tracking-lemon mb-1">Transferencias Pull 🔄</p>
-        <p className="text-t-secondary text-[13px] leading-relaxed tracking-lemon">Ahora podés autorizar débitos desde tus cuentas en otros bancos directamente en Lemon.</p>
-      </div>
+      <div className="flex gap-4 px-5 mb-6"><ActionBtn icon={<ArrowDown />} label="DEPOSITAR" active /><ActionBtn icon={<RefreshSvg />} label="CAMBIAR" /><ActionBtn icon={<ArrowUp />} label="ENVIAR" /></div>
+      <div className="mx-5 bg-[#1a1a1a] rounded-2xl p-4 mb-6 border border-[#222]"><p className="text-white text-[15px] font-medium tracking-lemon mb-1">Transferencias Pull 🔄</p><p className="text-t-secondary text-[13px] leading-relaxed tracking-lemon">Ahora podés autorizar débitos desde tus cuentas en otros bancos directamente en Lemon.</p></div>
       <div className="px-5 mb-4">
-        <div className="flex justify-between items-center mb-1">
-          <span className="text-t-secondary text-[14px] tracking-lemon">Pesos</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
-        </div>
-        <div className="flex items-baseline gap-2">
-          <span className="text-white text-[26px] font-bold tracking-tight">{fmtParts(pull.currentBalance / 1476).int}</span>
-          <span className="text-[16px] font-medium" style={{ color: "#00f068" }}>USDT</span>
-          <div className="ml-auto px-2.5 py-1 rounded-full" style={{ background: "rgba(0,240,104,0.15)" }}>
-            <span className="text-[12px] font-medium" style={{ color: "#00f068" }}>19.97%</span>
-          </div>
-        </div>
+        <div className="flex justify-between items-center mb-1"><span className="text-t-secondary text-[14px] tracking-lemon">Pesos</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg></div>
+        <div className="flex items-baseline gap-2"><span className="text-white text-[26px] font-bold tracking-tight">{fmtParts(pull.currentBalance / 1476).int}</span><span className="text-[16px] font-medium" style={{ color: "#00f068" }}>USDT</span><div className="ml-auto px-2.5 py-1 rounded-full" style={{ background: "rgba(0,240,104,0.15)" }}><span className="text-[12px] font-medium" style={{ color: "#00f068" }}>19.97%</span></div></div>
         <p className="text-t-tertiary text-[13px] tracking-lemon">{fmtARS(pull.currentBalance)} ARS</p>
       </div>
-      <div className="flex-1" />
-      <TabBar />
+      <div className="flex-1" /><TabBar />
     </div>
   );
 }
 
-/* ================================================================
-   CONFIRMATION SHEET
-   ================================================================ */
+/* ================================================================ CONFIRMATION SHEET ================================================================ */
 function SheetOverlay({ show, pull, onConfirm, onReject }: { show: boolean; pull: Pull; onConfirm: () => void; onReject: () => void }) {
-  const [swipeX, setSwipeX] = useState(0);
-  const [swiping, setSwiping] = useState(false);
-  const [startX, setStartX] = useState(0);
-  const amtParts = fmtParts(pull.amount);
+  const [swipeX, setSwipeX] = useState(0); const [swiping, setSwiping] = useState(false); const [startX, setStartX] = useState(0);
+  const a = fmtParts(pull.amount);
   useEffect(() => { setSwipeX(0); setSwiping(false); }, [pull]);
-  const handleDown = (e: React.PointerEvent) => { (e.target as HTMLElement).setPointerCapture(e.pointerId); setSwiping(true); setStartX(e.clientX); };
-  const handleMove = (e: React.PointerEvent) => { if (!swiping) return; setSwipeX(Math.max(0, Math.min(1, (e.clientX - startX) / 260))); };
-  const handleUp = () => { setSwiping(false); if (swipeX > 0.7) { setSwipeX(1); setTimeout(onConfirm, 250); } else setSwipeX(0); };
-
+  const dn = (e: React.PointerEvent) => { (e.target as HTMLElement).setPointerCapture(e.pointerId); setSwiping(true); setStartX(e.clientX); };
+  const mv = (e: React.PointerEvent) => { if (!swiping) return; setSwipeX(Math.max(0, Math.min(1, (e.clientX - startX) / 260))); };
+  const up = () => { setSwiping(false); if (swipeX > 0.7) { setSwipeX(1); setTimeout(onConfirm, 250); } else setSwipeX(0); };
   return (
     <>
       <div className="absolute inset-0 z-40 transition-opacity duration-300" style={{ background: "rgba(0,0,0,0.7)", opacity: show ? 1 : 0, pointerEvents: show ? "auto" : "none" }} onClick={onReject} />
@@ -323,26 +243,16 @@ function SheetOverlay({ show, pull, onConfirm, onReject }: { show: boolean; pull
           <div className="flex justify-center mb-4"><div className="w-10 h-1 rounded-full bg-[#444]" /></div>
           <p className="text-white text-[17px] text-center font-medium tracking-lemon mb-1">Autorizar débito</p>
           <p className="text-t-secondary text-[14px] text-center tracking-lemon mb-4">Vas a enviar</p>
-          <div className="flex items-baseline justify-center gap-3 mb-5">
-            <div className="self-center"><RoundFlag size={36} /></div>
-            <span className="text-white text-[32px] font-bold tracking-tight leading-none">{amtParts.int}</span>
-            <span className="text-t-secondary text-[20px] font-medium leading-none">ARS</span>
-          </div>
+          <div className="flex items-baseline justify-center gap-3 mb-5"><div className="self-center"><RoundFlag size={36} /></div><span className="text-white text-[32px] font-bold tracking-tight leading-none">{a.int}</span><span className="text-t-secondary text-[20px] font-medium leading-none">ARS</span></div>
           <div className="h-px bg-[#333] mb-4" />
-          <div className="space-y-3.5 mb-4">
-            <DetailRow label="Nombre" value={pull.recipientName} />
-            <DetailRow label="Banco" value={pull.bankName} />
-            <DetailRow label="CBU" value={pull.cbu} mono />
-          </div>
+          <div className="space-y-3.5 mb-4"><DetailRow label="Nombre" value={pull.recipientName} /><DetailRow label="Banco" value={pull.bankName} /><DetailRow label="CBU" value={pull.cbu} mono /></div>
           <p className="text-t-tertiary text-[13px] text-center tracking-lemon mb-5">Las transferencias en ARS no tienen costo.</p>
           <div className="relative h-[58px] rounded-full overflow-hidden select-none touch-none border border-[#d5d0c8]/30" style={{ background: "#f5f0e8" }}>
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ opacity: Math.max(0, 1 - swipeX / 0.3) }}>
-              <span className="text-[#555] text-[15px] font-medium tracking-lemon pl-8">Desliza para confirmar</span>
-            </div>
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ opacity: Math.max(0, 1 - swipeX / 0.3) }}><span className="text-[#555] text-[15px] font-medium tracking-lemon pl-8">Desliza para confirmar</span></div>
             <div className="absolute top-[4px] w-[50px] h-[50px] rounded-full bg-black flex items-center justify-center pointer-events-none z-10" style={{ left: swipeX === 0 ? "4px" : `calc(${swipeX * 85}% + 4px)`, transition: swiping ? "none" : "left 0.3s cubic-bezier(0.16,1,0.3,1)" }}>
               {swipeX > 0.7 ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12l5 5L20 7"/></svg> : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>}
             </div>
-            <div className="absolute top-0 h-full w-24 z-20 touch-none cursor-grab active:cursor-grabbing" style={{ left: swipeX === 0 ? "0px" : `calc(${swipeX * 85}% - 16px)`, transition: swiping ? "none" : "left 0.3s cubic-bezier(0.16,1,0.3,1)" }} onPointerDown={handleDown} onPointerMove={handleMove} onPointerUp={handleUp} onPointerCancel={handleUp} />
+            <div className="absolute top-0 h-full w-24 z-20 touch-none cursor-grab active:cursor-grabbing" style={{ left: swipeX === 0 ? "0px" : `calc(${swipeX * 85}% - 16px)`, transition: swiping ? "none" : "left 0.3s cubic-bezier(0.16,1,0.3,1)" }} onPointerDown={dn} onPointerMove={mv} onPointerUp={up} onPointerCancel={up} />
           </div>
           <button onClick={onReject} className="w-full pt-5"><span className="text-[#E24B4A] text-[14px] font-medium tracking-lemon">Rechazar solicitud</span></button>
         </div>
@@ -351,50 +261,7 @@ function SheetOverlay({ show, pull, onConfirm, onReject }: { show: boolean; pull
   );
 }
 
-/* ================================================================
-   EXPIRED / INSUFFICIENT / SUCCESS DETAIL SHEETS
-   ================================================================ */
-function ExpiredSheet({ pull, show, onBack }: { pull: Pull; show: boolean; onBack: () => void }) {
-  return <InfoSheet show={show} onBack={onBack} icon={<ClockIcon />} iconBg="rgba(239,159,39,0.12)" title="Esta solicitud expiró" body={<>La solicitud de débito de <span className="text-white font-medium">{pull.bankName}</span> por <span className="text-white font-medium">${fmtARS(pull.amount)} ARS</span> ya no está disponible.</>} sub="No se debitó nada de tu cuenta." btn="Volver al inicio" />;
-}
-
-function InsufficientSheet({ pull, show, onBack }: { pull: Pull; show: boolean; onBack: () => void }) {
-  return <InfoSheet show={show} onBack={onBack} icon={<ExclaimIcon />} iconBg="rgba(226,75,74,0.12)" title="Saldo insuficiente" body={<>No tenés saldo suficiente en tu cuenta Lemon para completar el débito de <span className="text-white font-medium">${fmtARS(pull.amount)} ARS</span> solicitado por <span className="text-white font-medium">{pull.bankName}</span>.</>} sub="No se debitó nada de tu cuenta." btn="Entendido" />;
-}
-
-function SuccessDetailSheet({ pull, show, onBack }: { pull: Pull; show: boolean; onBack: () => void }) {
-  const newBal = pull.currentBalance + pull.amount;
-  return (
-    <>
-      <div className="absolute inset-0 z-40 transition-opacity duration-300" style={{ background: "rgba(0,0,0,0.7)", opacity: show ? 1 : 0, pointerEvents: show ? "auto" : "none" }} onClick={onBack} />
-      <div className="absolute left-0 right-0 bottom-0 z-50 transition-transform duration-500" style={{ transform: show ? "translateY(0)" : "translateY(100%)", transitionTimingFunction: "cubic-bezier(0.16,1,0.3,1)" }}>
-        <div className="bg-[#1a1a1a] rounded-t-[28px] px-5 pb-10 pt-3">
-          <div className="flex justify-center mb-5"><div className="w-10 h-1 rounded-full bg-[#444]" /></div>
-          <div className="flex justify-center mb-4">
-            <div className="w-[60px] h-[60px] rounded-full flex items-center justify-center" style={{ background: "rgba(0,240,104,0.12)" }}>
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00f068" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12l5 5L20 7"/></svg>
-            </div>
-          </div>
-          <p className="text-white text-[18px] font-bold tracking-lemon mb-2 text-center">Débito autorizado</p>
-          <p className="text-t-secondary text-[14px] text-center leading-relaxed tracking-lemon mb-4">Se debitaron <span className="text-white font-medium">${fmtARS(pull.amount)} ARS</span> de tu cuenta en <span className="text-white font-medium">{pull.bankName}</span></p>
-          <div className="h-px bg-[#333] mb-4" />
-          <div className="space-y-3 mb-4">
-            <DetailRow label="Nombre" value={pull.recipientName} />
-            <DetailRow label="Banco" value={pull.bankName} />
-            <DetailRow label="CBU" value={pull.cbu} mono />
-            <DetailRow label="Nuevo saldo" value={`$${fmtARS(newBal)} ARS`} green />
-          </div>
-          <button onClick={onBack} className="w-full py-3.5 rounded-2xl font-medium text-[15px] tracking-lemon active:scale-[0.97] transition-transform text-black" style={{ background: "#00f068" }}>Cerrar</button>
-        </div>
-      </div>
-    </>
-  );
-}
-
-function RejectedDetailSheet({ pull, show, onBack }: { pull: Pull; show: boolean; onBack: () => void }) {
-  return <InfoSheet show={show} onBack={onBack} icon={<XCircleIcon />} iconBg="rgba(226,75,74,0.12)" title="Transferencia Pull rechazada" body={<>Rechazaste la solicitud de débito de <span className="text-white font-medium">{pull.bankName}</span> por <span className="text-white font-medium">${fmtARS(pull.amount)} ARS</span>.</>} sub="No se debitó nada de tu cuenta." btn="Cerrar" />;
-}
-
+/* ================================================================ INFO SHEETS ================================================================ */
 function InfoSheet({ show, onBack, icon, iconBg, title, body, sub, btn }: { show: boolean; onBack: () => void; icon: React.ReactNode; iconBg: string; title: string; body: React.ReactNode; sub: string; btn: string }) {
   return (
     <>
@@ -413,56 +280,64 @@ function InfoSheet({ show, onBack, icon, iconBg, title, body, sub, btn }: { show
   );
 }
 
-/* ================================================================
-   LOCK SCREEN
-   ================================================================ */
-function LockScreen({ showNotif, onTapNotif, pull, queuedPull }: { showNotif: boolean; onTapNotif: () => void; pull: Pull; queuedPull: Pull | null }) {
-  const [time, setTime] = useState("");
-  const [date, setDate] = useState("");
-  const [showSecond, setShowSecond] = useState(false);
-  useEffect(() => { const tick = () => { const d = new Date(); setTime(d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false })); setDate(d.toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short" })); }; tick(); const i = setInterval(tick, 1000); return () => clearInterval(i); }, []);
-  useEffect(() => { if (showNotif && queuedPull) { const t = setTimeout(() => setShowSecond(true), 700); return () => clearTimeout(t); } setShowSecond(false); }, [showNotif, queuedPull]);
+function ExpiredSheet({ pull, show, onBack }: { pull: Pull; show: boolean; onBack: () => void }) {
+  return <InfoSheet show={show} onBack={onBack} icon={<ClockIcon />} iconBg="rgba(239,159,39,0.12)" title="Esta solicitud expiró" body={<>La solicitud de débito de <W>{pull.bankName}</W> por <W>${fmtARS(pull.amount)} ARS</W> ya no está disponible.</>} sub="No se debitó nada de tu cuenta." btn="Volver al inicio" />;
+}
+function InsufficientSheet({ pull, show, onBack }: { pull: Pull; show: boolean; onBack: () => void }) {
+  return <InfoSheet show={show} onBack={onBack} icon={<ExclaimIcon />} iconBg="rgba(226,75,74,0.12)" title="Saldo insuficiente" body={<>No tenés saldo suficiente en tu cuenta Lemon para completar el débito de <W>${fmtARS(pull.amount)} ARS</W> solicitado por <W>{pull.bankName}</W>.</>} sub="No se debitó nada de tu cuenta." btn="Entendido" />;
+}
+function SuccessDetailSheet({ pull, show, onBack }: { pull: Pull; show: boolean; onBack: () => void }) {
+  const nb = pull.currentBalance + pull.amount;
+  return (
+    <>
+      <div className="absolute inset-0 z-40 transition-opacity duration-300" style={{ background: "rgba(0,0,0,0.7)", opacity: show ? 1 : 0, pointerEvents: show ? "auto" : "none" }} onClick={onBack} />
+      <div className="absolute left-0 right-0 bottom-0 z-50 transition-transform duration-500" style={{ transform: show ? "translateY(0)" : "translateY(100%)", transitionTimingFunction: "cubic-bezier(0.16,1,0.3,1)" }}>
+        <div className="bg-[#1a1a1a] rounded-t-[28px] px-5 pb-10 pt-3">
+          <div className="flex justify-center mb-5"><div className="w-10 h-1 rounded-full bg-[#444]" /></div>
+          <div className="flex justify-center mb-4"><div className="w-[60px] h-[60px] rounded-full flex items-center justify-center" style={{ background: "rgba(0,240,104,0.12)" }}><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00f068" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12l5 5L20 7"/></svg></div></div>
+          <p className="text-white text-[18px] font-bold tracking-lemon mb-2 text-center">Débito autorizado</p>
+          <p className="text-t-secondary text-[14px] text-center leading-relaxed tracking-lemon mb-4">Se debitaron <W>${fmtARS(pull.amount)} ARS</W> de tu cuenta en <W>{pull.bankName}</W></p>
+          <div className="h-px bg-[#333] mb-4" />
+          <div className="space-y-3 mb-4"><DetailRow label="Nombre" value={pull.recipientName} /><DetailRow label="Banco" value={pull.bankName} /><DetailRow label="CBU" value={pull.cbu} mono /><DetailRow label="Nuevo saldo" value={`$${fmtARS(nb)} ARS`} green /></div>
+          <button onClick={onBack} className="w-full py-3.5 rounded-2xl font-medium text-[15px] tracking-lemon active:scale-[0.97] transition-transform text-black" style={{ background: "#00f068" }}>Cerrar</button>
+        </div>
+      </div>
+    </>
+  );
+}
+function RejectedDetailSheet({ pull, show, onBack }: { pull: Pull; show: boolean; onBack: () => void }) {
+  return <InfoSheet show={show} onBack={onBack} icon={<XCircleIcon />} iconBg="rgba(226,75,74,0.12)" title="Transferencia Pull rechazada" body={<>Rechazaste la solicitud de débito de <W>{pull.bankName}</W> por <W>${fmtARS(pull.amount)} ARS</W>.</>} sub="No se debitó nada de tu cuenta." btn="Cerrar" />;
+}
+function W({ children }: { children: React.ReactNode }) { return <span className="text-white font-medium">{children}</span>; }
 
+/* ================================================================ LOCK SCREEN ================================================================ */
+function LockScreen({ showPush, onTapPush, pull, queuedPull }: { showPush: boolean; onTapPush: () => void; pull: Pull; queuedPull: Pull | null }) {
+  const [time, setTime] = useState(""); const [date, setDate] = useState(""); const [show2, setShow2] = useState(false);
+  useEffect(() => { const t = () => { const d = new Date(); setTime(d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false })); setDate(d.toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short" })); }; t(); const i = setInterval(t, 1000); return () => clearInterval(i); }, []);
+  useEffect(() => { if (showPush && queuedPull) { const t = setTimeout(() => setShow2(true), 700); return () => clearTimeout(t); } setShow2(false); }, [showPush, queuedPull]);
   return (
     <div className="h-full relative flex flex-col items-center" style={{ background: "linear-gradient(170deg, #1a1a2e 0%, #111122 30%, #0d0d1a 60%, #000 100%)" }}>
       <div className="w-full flex justify-between items-center px-8 pt-[52px] text-white/70 text-[13px] font-medium"><span>Personal</span><div className="flex items-center gap-1.5"><SignalBars opacity={0.7} /><WifiIcon opacity={0.7} /><BatteryIcon /></div></div>
       <p className="text-white/60 text-[17px] mt-5 tracking-wider font-medium">{date}</p>
       <p className="text-white text-[82px] font-bold tracking-tight leading-none mt-0">{time}</p>
-      {showNotif && queuedPull && showSecond && (<div className="absolute top-[230px] left-4 right-4 notif-enter cursor-pointer" onClick={onTapNotif}><PushNotif pull={queuedPull} time="ahora" /></div>)}
-      {showNotif && (<div className={`absolute left-4 right-4 notif-enter cursor-pointer ${queuedPull && showSecond ? "top-[370px]" : "top-[230px]"}`} style={{ transition: "top 0.4s cubic-bezier(0.16,1,0.3,1)" }} onClick={onTapNotif}><PushNotif pull={pull} time="ahora" /></div>)}
-      <div className="absolute bottom-10 left-0 right-0 flex justify-between px-12">
-        <div className="w-[50px] h-[50px] rounded-full bg-white/[0.06] flex items-center justify-center"><svg width="20" height="22" viewBox="0 0 20 22" fill="white" opacity="0.4"><path d="M10 1L2 6v10l8 5 8-5V6l-8-5z"/></svg></div>
-        <div className="w-[50px] h-[50px] rounded-full bg-white/[0.06] flex items-center justify-center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" opacity="0.4"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg></div>
-      </div>
-      {showNotif && <p className="absolute bottom-[88px] text-white/25 text-[12px] tracking-lemon">Tocá la notificación</p>}
+      {showPush && queuedPull && show2 && <div className="absolute top-[230px] left-4 right-4 notif-enter cursor-pointer" onClick={onTapPush}><PushNotif pull={queuedPull} /></div>}
+      {showPush && <div className={`absolute left-4 right-4 notif-enter cursor-pointer ${queuedPull && show2 ? "top-[370px]" : "top-[230px]"}`} style={{ transition: "top 0.4s cubic-bezier(0.16,1,0.3,1)" }} onClick={onTapPush}><PushNotif pull={pull} /></div>}
+      <div className="absolute bottom-10 left-0 right-0 flex justify-between px-12"><div className="w-[50px] h-[50px] rounded-full bg-white/[0.06] flex items-center justify-center"><svg width="20" height="22" viewBox="0 0 20 22" fill="white" opacity="0.4"><path d="M10 1L2 6v10l8 5 8-5V6l-8-5z"/></svg></div><div className="w-[50px] h-[50px] rounded-full bg-white/[0.06] flex items-center justify-center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" opacity="0.4"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg></div></div>
+      {showPush && <p className="absolute bottom-[88px] text-white/25 text-[12px] tracking-lemon">Tocá la notificación</p>}
     </div>
   );
 }
-
-function PushNotif({ pull, time }: { pull: Pull; time: string }) {
-  return (
-    <div className="rounded-[22px] p-[14px] border border-white/[0.08]" style={{ background: "rgba(30,30,30,0.75)", backdropFilter: "blur(40px)", WebkitBackdropFilter: "blur(40px)" }}>
-      <div className="flex items-start gap-3">
-        <div className="w-[40px] h-[40px] rounded-[10px] bg-black flex items-center justify-center flex-shrink-0 border border-white/[0.06]"><span className="font-bold text-[18px]" style={{ color: "#00f068" }}>L</span></div>
-        <div className="flex-1 min-w-0">
-          <div className="flex justify-between items-center mb-0.5"><span className="text-white/90 font-medium text-[14px] tracking-lemon">LEMON</span><span className="text-white/35 text-[12px]">{time}</span></div>
-          <p className="text-white font-medium text-[15px] leading-tight tracking-lemon">{pull.bankName} quiere debitar ${fmtARS(pull.amount)} de tu cuenta</p>
-          <p className="text-white/60 text-[14px] leading-snug mt-1 tracking-lemon">Ingresá para autorizar o rechazar esta solicitud.</p>
-        </div>
-      </div>
-    </div>
-  );
+function PushNotif({ pull }: { pull: Pull }) {
+  return <div className="rounded-[22px] p-[14px] border border-white/[0.08]" style={{ background: "rgba(30,30,30,0.75)", backdropFilter: "blur(40px)", WebkitBackdropFilter: "blur(40px)" }}><div className="flex items-start gap-3"><div className="w-[40px] h-[40px] rounded-[10px] bg-black flex items-center justify-center flex-shrink-0 border border-white/[0.06]"><span className="font-bold text-[18px]" style={{ color: "#00f068" }}>L</span></div><div className="flex-1 min-w-0"><div className="flex justify-between items-center mb-0.5"><span className="text-white/90 font-medium text-[14px] tracking-lemon">LEMON</span><span className="text-white/35 text-[12px]">ahora</span></div><p className="text-white font-medium text-[15px] leading-tight tracking-lemon">{pull.bankName} quiere debitar ${fmtARS(pull.amount)} de tu cuenta</p><p className="text-white/60 text-[14px] leading-snug mt-1 tracking-lemon">Ingresá para autorizar o rechazar esta solicitud.</p></div></div></div>;
 }
 
-/* ================================================================
-   BIOMETRIC
-   ================================================================ */
+/* ================================================================ BIOMETRIC ================================================================ */
 function BiometricScreen() {
   return (
     <div className="h-full bg-black flex flex-col items-center justify-center fade-in">
       <div className="relative w-[120px] h-[120px] mb-8">
-        {[0, 0.3, 0.6].map((d, i) => (<div key={i} className="absolute rounded-full border-2" style={{ inset: `${i * 12}px`, borderColor: `rgba(0,240,104,${0.3 + i * 0.2})`, animation: `pulse-ring 2s ease-in-out infinite ${d}s` }} />))}
-        <div className="absolute inset-0 flex items-center justify-center"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#00f068" strokeWidth="1.5" strokeLinecap="round"><path d="M4 8V6a2 2 0 012-2h2M4 16v2a2 2 0 002 2h2M16 4h2a2 2 0 012 2v2M16 20h2a2 2 0 002-2v-2" /><circle cx="12" cy="11" r="3" /><path d="M12 14c-3 0-5 1.5-5 3v1h10v-1c0-1.5-2-3-5-3z" /></svg></div>
+        {[0, 0.3, 0.6].map((d, i) => <div key={i} className="absolute rounded-full border-2" style={{ inset: `${i * 12}px`, borderColor: `rgba(0,240,104,${0.3 + i * 0.2})`, animation: `pulse-ring 2s ease-in-out infinite ${d}s` }} />)}
+        <div className="absolute inset-0 flex items-center justify-center"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#00f068" strokeWidth="1.5" strokeLinecap="round"><path d="M4 8V6a2 2 0 012-2h2M4 16v2a2 2 0 002 2h2M16 4h2a2 2 0 012 2v2M16 20h2a2 2 0 002-2v-2"/><circle cx="12" cy="11" r="3"/><path d="M12 14c-3 0-5 1.5-5 3v1h10v-1c0-1.5-2-3-5-3z"/></svg></div>
       </div>
       <p className="text-white text-[17px] font-medium tracking-lemon">Verificando tu identidad</p>
       <p className="text-t-secondary text-[14px] mt-1.5 tracking-lemon">Mirá a la cámara para continuar</p>
@@ -470,25 +345,21 @@ function BiometricScreen() {
   );
 }
 
-/* ================================================================
-   SUCCESS
-   ================================================================ */
+/* ================================================================ SUCCESS ================================================================ */
 function SuccessScreen({ pull }: { pull: Pull }) {
-  const newBal = pull.currentBalance + pull.amount;
+  const nb = pull.currentBalance + pull.amount;
   return (
     <div className="h-full bg-black flex flex-col items-center justify-center fade-in relative overflow-hidden">
-      {Array.from({ length: 18 }).map((_, i) => (<div key={i} className="absolute rounded-sm" style={{ width: 5 + Math.random() * 7, height: 3 + Math.random() * 4, background: ["#00f068", "#00ca57", "#3ff48d", "#FBBF24", "#60A5FA"][i % 5], left: `${10 + Math.random() * 80}%`, top: "45%", animation: `confetti-burst ${0.8 + Math.random() * 0.6}s cubic-bezier(0.25,0.46,0.45,0.94) ${Math.random() * 0.3}s forwards` }} />))}
+      {Array.from({ length: 18 }).map((_, i) => <div key={i} className="absolute rounded-sm" style={{ width: 5 + Math.random() * 7, height: 3 + Math.random() * 4, background: ["#00f068", "#00ca57", "#3ff48d", "#FBBF24", "#60A5FA"][i % 5], left: `${10 + Math.random() * 80}%`, top: "45%", animation: `confetti-burst ${0.8 + Math.random() * 0.6}s cubic-bezier(0.25,0.46,0.45,0.94) ${Math.random() * 0.3}s forwards` }} />)}
       <div className="w-[72px] h-[72px] rounded-full flex items-center justify-center mb-6 check-pop" style={{ background: "#00f068" }}><svg width="32" height="32" viewBox="0 0 32 32" fill="none"><path d="M9 16.5l5 5L23 11" stroke="black" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
       <p className="text-white text-[22px] font-bold tracking-lemon mb-2">Débito autorizado</p>
       <p className="text-t-secondary text-[14px] text-center px-8 mb-6 tracking-lemon">Se debitaron ${fmtARS(pull.amount)} de tu cuenta en {pull.bankName}</p>
-      <div className="bg-[#1a1a1a] rounded-2xl px-6 py-4 text-center slide-up" style={{ animationDelay: "0.15s" }}><p className="text-t-tertiary text-[11px] uppercase tracking-widest mb-1">Tu nuevo saldo en Lemon</p><p className="text-[24px] font-bold" style={{ color: "#00f068" }}>${fmtARS(newBal)} ARS</p></div>
+      <div className="bg-[#1a1a1a] rounded-2xl px-6 py-4 text-center slide-up" style={{ animationDelay: "0.15s" }}><p className="text-t-tertiary text-[11px] uppercase tracking-widest mb-1">Tu nuevo saldo en Lemon</p><p className="text-[24px] font-bold" style={{ color: "#00f068" }}>${fmtARS(nb)} ARS</p></div>
     </div>
   );
 }
 
-/* ================================================================
-   ACTIVITY — MOVIMIENTOS
-   ================================================================ */
+/* ================================================================ ACTIVITY — MOVIMIENTOS ================================================================ */
 function ActivityMovScreen({ outcomes, onNotif }: { outcomes: Array<{ pull: Pull; result: string }>; onNotif: () => void }) {
   const today = new Date().toLocaleDateString("es-AR", { day: "numeric", month: "long" });
   const confirmed = outcomes.filter(o => o.result === "confirmed");
@@ -498,7 +369,7 @@ function ActivityMovScreen({ outcomes, onNotif }: { outcomes: Array<{ pull: Pull
       <Seg active="mov" onNotif={onNotif} onMov={() => {}} />
       <div className="flex-1 overflow-y-auto px-4">
         <p className="text-t-secondary text-[14px] font-medium mb-3 tracking-lemon">Hoy</p>
-        {confirmed.map((o, i) => (<MovRow key={`c-${i}`} icon={<RoundFlag />} title={`Débito autorizado — ${o.pull.bankName}`} sub={today} amount={`+ ${fmtARS(o.pull.amount)}`} suffix=" ARS" positive highlight />))}
+        {confirmed.map((o, i) => <MovRow key={`c-${i}`} icon={<RoundFlag />} title={`Débito autorizado — ${o.pull.bankName}`} sub={today} amount={`+ ${fmtARS(o.pull.amount)}`} suffix=" ARS" positive highlight />)}
         <MovRow icon={<RoundFlag />} title="Retiro de ARS" sub={today} amount="- 13.000,00" suffix=" ARS" />
         <MovRow icon={<RoundFlag />} title="Rendimientos" sub={today} amount="+ 172,80 ARS" sub2="20.48%" positive />
         <MovRow icon={<CIcon c="#2775ca" l="$" />} title="Ganancias diarias" sub={today} amount="+ 0,03 USDC" sub2="≈ 35,72 ARS" positive />
@@ -510,18 +381,8 @@ function ActivityMovScreen({ outcomes, onNotif }: { outcomes: Array<{ pull: Pull
   );
 }
 
-/* ================================================================
-   ACTIVITY — NOTIFICACIONES (interactive hub with state toggle)
-   ================================================================ */
-const NOTIF_STATES: { key: NotifState; label: string }[] = [
-  { key: "pending", label: "Pendiente" },
-  { key: "success", label: "Exitosa" },
-  { key: "rejected", label: "Rechazada" },
-  { key: "expired", label: "Expirada" },
-  { key: "insufficient", label: "Sin saldo" },
-];
-
-const NOTIF_CONFIG: Record<NotifState, { icon: React.ReactNode; iconBg: string; title: string; color: string }> = {
+/* ================================================================ ACTIVITY — NOTIFICACIONES (chronological log) ================================================================ */
+const NCFG: Record<NotifType, { icon: React.ReactNode; iconBg: string; title: string; color: string }> = {
   pending: { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#EF9F27" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>, iconBg: "rgba(239,159,39,0.12)", title: "Transferencia Pull pendiente", color: "#EF9F27" },
   success: { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00f068" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 12.5l3 3 5-6"/></svg>, iconBg: "rgba(0,240,104,0.12)", title: "Transferencia Pull exitosa", color: "#00f068" },
   rejected: { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#E24B4A" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>, iconBg: "rgba(226,75,74,0.12)", title: "Transferencia Pull rechazada", color: "#E24B4A" },
@@ -529,78 +390,65 @@ const NOTIF_CONFIG: Record<NotifState, { icon: React.ReactNode; iconBg: string; 
   insufficient: { icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#E24B4A" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>, iconBg: "rgba(226,75,74,0.12)", title: "Saldo insuficiente", color: "#E24B4A" },
 };
 
-const NOTIF_BODY: Record<NotifState, (p: Pull) => React.ReactNode> = {
-  pending: (p) => <>{p.bankName} quiere debitar <span className="text-white">${fmtARS(p.amount)} ARS</span> de tu cuenta. <span style={{ color: "#EF9F27" }}>Tocá para autorizar o rechazar.</span></>,
-  success: (p) => <>Se debitaron <span style={{ color: "#00f068" }}>${fmtARS(p.amount)} ARS</span> de tu cuenta en <span className="text-white">{p.bankName}</span> hacia tu cuenta Lemon.</>,
-  rejected: (p) => <>Rechazaste la solicitud de débito de <span className="text-white">{p.bankName}</span> por <span className="text-white">${fmtARS(p.amount)} ARS</span>. No se debitó nada de tu cuenta.</>,
-  expired: (p) => <>La solicitud de <span className="text-white">{p.bankName}</span> por <span className="text-white">${fmtARS(p.amount)} ARS</span> expiró. No se debitó nada de tu cuenta.</>,
-  insufficient: (p) => <>No había saldo suficiente en tu cuenta Lemon para el débito de <span className="text-white">${fmtARS(p.amount)} ARS</span> solicitado por <span className="text-white">{p.bankName}</span>. No se realizó la operación.</>,
+const NBODY: Record<NotifType, (p: Pull) => React.ReactNode> = {
+  pending: p => <>{p.bankName} quiere debitar <span className="text-white">${fmtARS(p.amount)} ARS</span> de tu cuenta. <span style={{ color: "#EF9F27" }}>Tocá para autorizar o rechazar.</span></>,
+  success: p => <>Se debitaron <span style={{ color: "#00f068" }}>${fmtARS(p.amount)} ARS</span> de tu cuenta en <span className="text-white">{p.bankName}</span> hacia tu cuenta Lemon.</>,
+  rejected: p => <>Rechazaste la solicitud de débito de <span className="text-white">{p.bankName}</span> por <span className="text-white">${fmtARS(p.amount)} ARS</span>. No se debitó nada de tu cuenta.</>,
+  expired: p => <>La solicitud de <span className="text-white">{p.bankName}</span> por <span className="text-white">${fmtARS(p.amount)} ARS</span> expiró. No se debitó nada de tu cuenta.</>,
+  insufficient: p => <>No había saldo suficiente en tu cuenta Lemon para el débito de <span className="text-white">${fmtARS(p.amount)} ARS</span> solicitado por <span className="text-white">{p.bankName}</span>.</>,
 };
 
-function ActivityNotifScreen({ outcomes, onMov, toggle, onToggle, onTapNotif, notifSheet, onCloseSheet, pull, mode }: {
-  outcomes: Array<{ pull: Pull; result: string }>; onMov: () => void; toggle: NotifState; onToggle: (s: NotifState) => void;
-  onTapNotif: (s: NotifState) => void; notifSheet: NotifState | null; onCloseSheet: () => void; pull: Pull; mode: SimMode;
+function ActivityNotifScreen({ notifs, onMov, onTapNotif, tappedNotif, onCloseSheet }: {
+  notifs: Notif[]; onMov: () => void; onTapNotif: (n: Notif) => void; tappedNotif: Notif | null; onCloseSheet: () => void;
 }) {
-  const cfg = NOTIF_CONFIG[toggle];
-  const body = NOTIF_BODY[toggle](pull);
-
   return (
     <div className="h-full bg-black flex flex-col relative">
       <StatusBar /><ActivityNav />
       <Seg active="notif" onNotif={() => {}} onMov={onMov} />
 
-      {/* State toggle chips */}
-      <div className="flex gap-2 px-4 mb-4 overflow-x-auto" style={{ WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }}>
-        {NOTIF_STATES.map(s => (
-          <button key={s.key} onClick={() => onToggle(s.key)}
-            className={`px-3.5 py-2 rounded-full text-[12px] font-medium tracking-lemon whitespace-nowrap flex-shrink-0 border transition-colors ${toggle === s.key ? "" : "border-[#444] text-t-secondary"}`}
-            style={toggle === s.key ? { borderColor: NOTIF_CONFIG[s.key].color, color: NOTIF_CONFIG[s.key].color } : {}}>
-            {s.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Notification card — tappable */}
-      <div className="flex-1 px-4">
-        <div className="bg-[#1a1a1a] rounded-2xl p-4 border border-[#2a2a2a] slide-up cursor-pointer active:bg-[#222] transition-colors"
-          onClick={() => onTapNotif(toggle)}>
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: cfg.iconBg }}>
-              {cfg.icon}
-            </div>
-            <div className="flex-1">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-white font-medium text-[14px] tracking-lemon">{cfg.title}</span>
-                <span className="text-t-tertiary text-[12px]">ahora</span>
-              </div>
-              <p className="text-t-secondary text-[13px] leading-snug tracking-lemon">{body}</p>
-              {toggle === "pending" && (
-                <div className="flex items-center gap-1.5 mt-2">
-                  <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#EF9F27" }} />
-                  <span className="text-[12px] font-medium tracking-lemon" style={{ color: "#EF9F27" }}>Esperando tu respuesta</span>
-                </div>
-              )}
-            </div>
-            {/* Chevron */}
-            <div className="flex items-center justify-center mt-1 flex-shrink-0">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
-            </div>
+      <div className="flex-1 overflow-y-auto px-4 space-y-3">
+        {notifs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-[300px]">
+            <div className="w-14 h-14 rounded-full bg-[#1a1a1a] flex items-center justify-center mb-4"><BellIcon color="#666" /></div>
+            <p className="text-white font-medium text-[16px] tracking-lemon mb-1">No hay notificaciones todavía</p>
+            <p className="text-t-secondary text-[13px] text-center px-8 tracking-lemon">Acá vas a poder encontrar información acerca de tus monedas favoritas, amigos y promociones.</p>
           </div>
-        </div>
+        ) : notifs.map(n => {
+          const cfg = NCFG[n.type];
+          return (
+            <div key={n.id} className="bg-[#1a1a1a] rounded-2xl p-4 border border-[#2a2a2a] slide-up cursor-pointer active:bg-[#222] transition-colors" onClick={() => onTapNotif(n)}>
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: cfg.iconBg }}>{cfg.icon}</div>
+                <div className="flex-1">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-white font-medium text-[14px] tracking-lemon">{cfg.title}</span>
+                    <span className="text-t-tertiary text-[12px]">{n.time}</span>
+                  </div>
+                  <p className="text-t-secondary text-[13px] leading-snug tracking-lemon">{NBODY[n.type](n.pull)}</p>
+                  {n.type === "pending" && (
+                    <div className="flex items-center gap-1.5 mt-2">
+                      <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#EF9F27" }} />
+                      <span className="text-[12px] font-medium tracking-lemon" style={{ color: "#EF9F27" }}>Esperando tu respuesta</span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center justify-center mt-1 flex-shrink-0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg></div>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Overlay sheets triggered by tapping notification */}
-      {notifSheet === "success" && <SuccessDetailSheet pull={pull} show={true} onBack={onCloseSheet} />}
-      {notifSheet === "rejected" && <RejectedDetailSheet pull={pull} show={true} onBack={onCloseSheet} />}
-      {notifSheet === "expired" && <ExpiredSheet pull={pull} show={true} onBack={onCloseSheet} />}
-      {notifSheet === "insufficient" && <InsufficientSheet pull={pull} show={true} onBack={onCloseSheet} />}
+      {/* Sheets triggered by tapping a notif card */}
+      {tappedNotif?.type === "success" && <SuccessDetailSheet pull={tappedNotif.pull} show onBack={onCloseSheet} />}
+      {tappedNotif?.type === "rejected" && <RejectedDetailSheet pull={tappedNotif.pull} show onBack={onCloseSheet} />}
+      {tappedNotif?.type === "expired" && <ExpiredSheet pull={tappedNotif.pull} show onBack={onCloseSheet} />}
+      {tappedNotif?.type === "insufficient" && <InsufficientSheet pull={tappedNotif.pull} show onBack={onCloseSheet} />}
     </div>
   );
 }
 
-/* ================================================================
-   SHARED
-   ================================================================ */
+/* ================================================================ SHARED ================================================================ */
 function StatusBar() { const [t, setT] = useState(""); useEffect(() => { const f = () => setT(new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false })); f(); const i = setInterval(f, 1000); return () => clearInterval(i); }, []); return <div className="flex justify-between items-center px-6 text-white text-[13px] font-medium" style={{ paddingTop: 52, paddingBottom: 4 }}><span>{t}</span><div className="flex items-center gap-1.5"><SignalBars /><WifiIcon /><BatteryIcon /></div></div>; }
 function ActivityNav() { return <div className="flex items-center justify-between px-4 py-2"><BackBtn /><span className="text-white font-medium text-[17px] tracking-lemon">Actividad</span><C40><GearIcon /></C40></div>; }
 function Seg({ active, onNotif, onMov }: { active: "notif" | "mov"; onNotif: () => void; onMov: () => void }) { return <div className="mx-4 mt-2 mb-4 flex bg-[#1a1a1a] rounded-xl p-[3px]"><button onClick={onNotif} className={`flex-1 py-2.5 rounded-[10px] text-[14px] font-medium tracking-lemon ${active === "notif" ? "bg-[#333] text-white" : "text-t-secondary"}`}>Notificaciones</button><button onClick={onMov} className={`flex-1 py-2.5 rounded-[10px] text-[14px] font-medium tracking-lemon ${active === "mov" ? "bg-[#333] text-white" : "text-t-secondary"}`}>Movimientos</button></div>; }
@@ -613,8 +461,6 @@ function TI({ icon, label, active }: { icon: React.ReactNode; label: string; act
 function ActionBtn({ icon, label, active }: { icon: React.ReactNode; label: string; active?: boolean }) { return <div className="flex flex-col items-center gap-1.5"><div className={`w-[52px] h-[52px] rounded-full flex items-center justify-center ${active ? "" : "bg-[#333]"}`} style={active ? { background: "#00f068" } : {}}>{icon}</div><span className="text-[11px] font-medium tracking-wider text-t-secondary">{label}</span></div>; }
 function RoundFlag({ size = 44 }: { size?: number }) { return <svg width={size} height={size} viewBox="0 0 44 44"><clipPath id="rf"><circle cx="22" cy="22" r="22"/></clipPath><g clipPath="url(#rf)"><rect width="44" height="44" fill="#338AF3"/><rect y="0" width="44" height="15" fill="#fff"/><rect y="29" width="44" height="15" fill="#fff"/><circle cx="22" cy="22" r="5" fill="#FFDA44"/></g></svg>; }
 function CIcon({ c, l }: { c: string; l: string }) { return <div className="w-[44px] h-[44px] rounded-full flex items-center justify-center" style={{ background: c }}><span className="text-white text-[18px] font-bold">{l}</span></div>; }
-
-/* Icons */
 function BellIcon({ color = "currentColor" }: { color?: string }) { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>; }
 function SearchIcon() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>; }
 function GearIcon() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>; }
