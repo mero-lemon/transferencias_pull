@@ -268,7 +268,8 @@ function SheetOverlay({ show, pull, onConfirm, onReject }: { show: boolean; pull
             </div>
             <div className="absolute top-0 h-full w-24 z-20 touch-none cursor-grab active:cursor-grabbing" style={{ left: swipeX === 0 ? "0px" : `calc(${swipeX * 85}% - 16px)`, transition: swiping ? "none" : "left 0.3s cubic-bezier(0.16,1,0.3,1)" }} onPointerDown={dn} onPointerMove={mv} onPointerUp={up} onPointerCancel={up} />
           </div>
-          <button onClick={onReject} className="w-full pt-5"><span className="text-[#E24B4A] text-[14px] font-medium tracking-lemon">Rechazar solicitud</span></button>
+          <p className="text-t-tertiary text-[12px] text-center tracking-lemon pt-4">Esta solicitud expira a los 15 min de recibida.</p>
+          <button onClick={onReject} className="w-full pt-3"><span className="text-[#E24B4A] text-[14px] font-medium tracking-lemon">Rechazar solicitud</span></button>
         </div>
       </div>
     </>
@@ -442,7 +443,7 @@ function ActivityNotifScreen({ notifs, onMov, onTapNotif, tappedNotif, onCloseSh
                   {n.type === "pending" && (
                     <div className="flex items-center gap-1.5 mt-2">
                       <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#EF9F27" }} />
-                      <span className="text-[12px] font-medium tracking-lemon" style={{ color: "#EF9F27" }}>Esperando tu respuesta</span>
+                      <span className="text-[12px] font-medium tracking-lemon" style={{ color: "#EF9F27" }}>Esperando tu respuesta · expira en 15 min</span>
                     </div>
                   )}
                 </div>
