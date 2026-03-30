@@ -615,7 +615,7 @@ function NotifCard({ type, pull }: { type: "rejected" | "insufficient"; pull: Pu
           <p className="text-t-secondary text-[13px] leading-snug tracking-lemon">
             {isRejected
               ? <>Rechazaste la solicitud de débito de <span className="text-white">{pull.bankName}</span> por <span className="text-white">${fmtARS(pull.amount)} ARS</span>. No se debitó nada de tu cuenta.</>
-              : <>Tu cuenta en <span className="text-white">{pull.bankName}</span> no tiene fondos suficientes para el débito de <span className="text-white">${fmtARS(pull.amount)} ARS</span>. No se realizó la operación.</>
+              : <>No había saldo suficiente en tu cuenta Lemon para el débito de <span className="text-white">${fmtARS(pull.amount)} ARS</span> solicitado por <span className="text-white">{pull.bankName}</span>. No se realizó la operación.</>
             }
           </p>
         </div>
