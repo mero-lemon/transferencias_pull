@@ -301,7 +301,7 @@ function InsufficientSheet({ pull, show, onBack }: { pull: Pull; show: boolean; 
   return <InfoSheet show={show} onBack={onBack} icon={<ExclaimIcon />} iconBg="rgba(226,75,74,0.12)" title="Saldo insuficiente" body={<>No tenés saldo suficiente en tu cuenta Lemon para completar el débito de <W>${fmtARS(pull.amount)} ARS</W> solicitado por <W>{pull.bankName}</W>.</>} sub="No se debitó nada de tu cuenta." btn="Entendido" />;
 }
 function SuccessDetailSheet({ pull, show, onBack }: { pull: Pull; show: boolean; onBack: () => void }) {
-  const nb = pull.currentBalance + pull.amount;
+  const nb = pull.currentBalance - pull.amount;
   return (
     <>
       <div className="absolute inset-0 z-40 transition-opacity duration-300" style={{ background: "rgba(0,0,0,0.7)", opacity: show ? 1 : 0, pointerEvents: show ? "auto" : "none" }} onClick={onBack} />
@@ -361,7 +361,7 @@ function BiometricScreen() {
 
 /* ================================================================ SUCCESS ================================================================ */
 function SuccessScreen({ pull }: { pull: Pull }) {
-  const nb = pull.currentBalance + pull.amount;
+  const nb = pull.currentBalance - pull.amount;
   return (
     <div className="h-full bg-black flex flex-col items-center justify-center fade-in relative overflow-hidden">
       {Array.from({ length: 18 }).map((_, i) => <div key={i} className="absolute rounded-sm" style={{ width: 5 + Math.random() * 7, height: 3 + Math.random() * 4, background: ["#00f068", "#00ca57", "#3ff48d", "#FBBF24", "#60A5FA"][i % 5], left: `${10 + Math.random() * 80}%`, top: "45%", animation: `confetti-burst ${0.8 + Math.random() * 0.6}s cubic-bezier(0.25,0.46,0.45,0.94) ${Math.random() * 0.3}s forwards` }} />)}
@@ -383,7 +383,7 @@ function ActivityMovScreen({ outcomes, onNotif }: { outcomes: Array<{ pull: Pull
       <Seg active="mov" onNotif={onNotif} onMov={() => {}} />
       <div className="flex-1 overflow-y-auto px-4">
         <p className="text-t-secondary text-[14px] font-medium mb-3 tracking-lemon">Hoy</p>
-        {confirmed.map((o, i) => <MovRow key={`c-${i}`} icon={<RoundFlag />} title={`Débito autorizado — ${o.pull.bankName}`} sub={today} amount={`+ ${fmtARS(o.pull.amount)}`} suffix=" ARS" positive highlight />)}
+        {confirmed.map((o, i) => <MovRow key={`c-${i}`} icon={<RoundFlag />} title={`Débito autorizado — ${o.pull.bankName}`} sub={today} amount={`- ${fmtARS(o.pull.amount)}`} suffix=" ARS" highlight />)}
         <MovRow icon={<RoundFlag />} title="Retiro de ARS" sub={today} amount="- 13.000,00" suffix=" ARS" />
         <MovRow icon={<RoundFlag />} title="Rendimientos" sub={today} amount="+ 172,80 ARS" sub2="20.48%" positive />
         <MovRow icon={<CIcon c="#2775ca" l="$" />} title="Ganancias diarias" sub={today} amount="+ 0,03 USDC" sub2="≈ 35,72 ARS" positive />
