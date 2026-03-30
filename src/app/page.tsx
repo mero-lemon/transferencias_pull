@@ -427,7 +427,7 @@ function LockScreen({ showNotif, onTapNotif, pull, queuedPull }: { showNotif: bo
 
       {/* First notification (on top, offset down if two) */}
       {showNotif && (
-        <div className={`absolute left-4 right-4 notif-enter cursor-pointer ${queuedPull && showSecond ? "top-[340px]" : "top-[230px]"}`}
+        <div className={`absolute left-4 right-4 notif-enter cursor-pointer ${queuedPull && showSecond ? "top-[370px]" : "top-[230px]"}`}
           style={{ transition: "top 0.4s cubic-bezier(0.16,1,0.3,1)" }}
           onClick={onTapNotif}>
           <PushNotif pull={pull} time="ahora" />
