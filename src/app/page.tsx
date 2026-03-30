@@ -342,7 +342,7 @@ function LockScreen({ showPush, onTapPush, pull, queuedPull }: { showPush: boole
   );
 }
 function PushNotif({ pull }: { pull: Pull }) {
-  return <div className="rounded-[22px] p-[14px] border border-white/[0.08]" style={{ background: "rgba(30,30,30,0.75)", backdropFilter: "blur(40px)", WebkitBackdropFilter: "blur(40px)" }}><div className="flex items-start gap-3"><div className="w-[40px] h-[40px] rounded-[10px] bg-black flex items-center justify-center flex-shrink-0 border border-white/[0.06]"><span className="font-bold text-[18px]" style={{ color: "#00f068" }}>L</span></div><div className="flex-1 min-w-0"><div className="flex justify-between items-center mb-0.5"><span className="text-white/90 font-medium text-[14px] tracking-lemon">LEMON</span><span className="text-white/35 text-[12px]">ahora</span></div><p className="text-white font-medium text-[15px] leading-tight tracking-lemon">{pull.bankName} quiere debitar ${fmtARS(pull.amount)} de tu cuenta</p><p className="text-white/60 text-[14px] leading-snug mt-1 tracking-lemon">Ingresá para autorizar o rechazar. Expira en 15 min.</p></div></div></div>;
+  return <div className="rounded-[22px] p-[14px] border border-white/[0.08]" style={{ background: "rgba(30,30,30,0.75)", backdropFilter: "blur(40px)", WebkitBackdropFilter: "blur(40px)" }}><div className="flex items-start gap-3"><div className="w-[40px] h-[40px] rounded-[10px] bg-black flex items-center justify-center flex-shrink-0 border border-white/[0.06]"><span className="font-bold text-[18px]" style={{ color: "#00f068" }}>L</span></div><div className="flex-1 min-w-0"><div className="flex justify-between items-center mb-0.5"><span className="text-white/90 font-medium text-[14px] tracking-lemon">LEMON</span><span className="text-white/35 text-[12px]">ahora</span></div><p className="text-white font-medium text-[15px] leading-tight tracking-lemon">{pull.bankName} quiere debitar ${fmtARS(pull.amount)} de tu cuenta</p><p className="text-white/60 text-[14px] leading-snug mt-1 tracking-lemon">Tenés 15 minutos para aceptar o rechazar.</p></div></div></div>;
 }
 
 /* ================================================================ BIOMETRIC ================================================================ */
@@ -442,7 +442,7 @@ function ActivityNotifScreen({ notifs, onMov, onTapNotif, tappedNotif, onCloseSh
                   {n.type === "pending" && (
                     <div className="flex items-center gap-1.5 mt-2">
                       <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#EF9F27" }} />
-                      <span className="text-[12px] font-medium tracking-lemon" style={{ color: "#EF9F27" }}>Esperando tu respuesta · expira en 15 min</span>
+                      <span className="text-[12px] font-medium tracking-lemon" style={{ color: "#EF9F27" }}>Esperando tu respuesta · vence en 15 min</span>
                     </div>
                   )}
                 </div>
