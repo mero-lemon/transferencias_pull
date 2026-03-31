@@ -54,6 +54,10 @@ export default function Page() {
     setQueuedPull(null); setNotifs([]); setTappedNotif(null); nid = 0;
   }, []);
 
+  const goHome = useCallback(() => {
+    setScreen("home"); setShowPush(false); setShowSheet(false);
+  }, []);
+
   const startFlow = useCallback((m: SimMode) => {
     setMode(m); setOutcomes([]); setQueuedPull(null);
     setActivePull(PULL_1); setNotifs([]); setTappedNotif(null); nid = 0;
@@ -128,8 +132,8 @@ export default function Page() {
     if (queuedPull) {
       setActivePull(queuedPull); setQueuedPull(null);
       setScreen("modal"); setTimeout(() => setShowSheet(true), 400);
-    } else { setScreen("activity_notif"); }
-  }, [queuedPull]);
+    } else { goHome(); }
+  }, [queuedPull, goHome]);
 
   // Tap pending notif in activity → open confirmation sheet
   const handleNotifTap = useCallback((n: Notif) => {
@@ -157,7 +161,7 @@ export default function Page() {
   }, [activePull, addNotif]);
 
   const isIdle = screen === "home" && notifs.length === 0;
-  const showRestart = screen === "activity_mov" || screen === "activity_notif" || screen === "expired";
+  const showRestart = screen === "activity_mov" || screen === "activity_notif" || screen === "expired" || (screen === "home" && notifs.length > 0);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-neutral-950 p-4 gap-4">
@@ -174,13 +178,13 @@ export default function Page() {
       <div className="w-[393px] h-[852px] bg-black rounded-[55px] border-[3px] border-[#333] overflow-hidden relative shadow-2xl shadow-black/60">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[126px] h-[37px] bg-black rounded-b-[20px] z-[70]" />
 
-        {(screen === "home" || screen === "modal" || screen === "expired" || screen === "insufficient") && <HomeContent pull={PULL_1} />}
+        {(screen === "home" || screen === "modal" || screen === "expired" || screen === "insufficient") && <HomeContent pull={PULL_1} onBell={notifs.length > 0 ? () => setScreen("activity_notif") : undefined} />}
         {screen === "modal" && (
           mode === "pending"
             ? <SheetOverlay show={showSheet} pull={activePull} onConfirm={handleConfirmFromNotif} onReject={handleRejectFromNotif} />
             : <SheetOverlay show={showSheet} pull={activePull} onConfirm={handleConfirm} onReject={handleReject} />
         )}
-        {screen === "expired" && <ExpiredSheet pull={activePull} show onBack={restart} />}
+        {screen === "expired" && <ExpiredSheet pull={activePull} show onBack={goHome} />}
         {screen === "insufficient" && <InsufficientSheet pull={activePull} show onBack={handleInsufficientDismiss} />}
         {screen === "lockscreen" && <LockScreen showPush={showPush} onTapPush={tapPush} pull={PULL_1} queuedPull={mode === "double" ? PULL_2 : null} />}
         {screen === "biometric" && <BiometricScreen />}
@@ -213,7 +217,7 @@ function SimBtn({ label, green, onClick }: { label: string; green?: boolean; onC
 }
 
 /* ================================================================ HOME ================================================================ */
-function HomeContent({ pull }: { pull: Pull }) {
+function HomeContent({ pull, onBell }: { pull: Pull; onBell?: () => void }) {
   return (
     <div className="h-full bg-black flex flex-col">
       <StatusBar />
@@ -222,7 +226,7 @@ function HomeContent({ pull }: { pull: Pull }) {
           <div className="w-[42px] h-[42px] rounded-full bg-gradient-to-br from-purple-500 to-blue-400 flex items-center justify-center border-2 border-[#333]"><span className="text-white text-[14px] font-bold">JC</span></div>
           <div className="bg-[#1a1a1a] rounded-full px-3.5 py-1.5 border border-[#333]"><span className="text-white text-[14px] font-medium tracking-lemon">$jeronimo</span></div>
         </div>
-        <div className="flex items-center gap-2"><C40><SearchIcon /></C40><div className="relative"><C40><BellIcon color="#999" /></C40><div className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-[#E24B4A]" /></div></div>
+        <div className="flex items-center gap-2"><C40><SearchIcon /></C40><div className="relative"><C40 onClick={onBell}><BellIcon color={onBell ? "white" : "#999"} /></C40><div className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-[#E24B4A]" /></div></div>
       </div>
       <div className="px-5 mb-5">
         <p className="text-t-secondary text-[13px] tracking-lemon mb-1">Total billetera</p>
@@ -467,7 +471,7 @@ function StatusBar() { const [t, setT] = useState(""); useEffect(() => { const f
 function ActivityNav() { return <div className="flex items-center justify-between px-4 py-2"><BackBtn /><span className="text-white font-medium text-[17px] tracking-lemon">Actividad</span><C40><GearIcon /></C40></div>; }
 function Seg({ active, onNotif, onMov }: { active: "notif" | "mov"; onNotif: () => void; onMov: () => void }) { return <div className="mx-4 mt-2 mb-4 flex bg-[#1a1a1a] rounded-xl p-[3px]"><button onClick={onNotif} className={`flex-1 py-2.5 rounded-[10px] text-[14px] font-medium tracking-lemon ${active === "notif" ? "bg-[#333] text-white" : "text-t-secondary"}`}>Notificaciones</button><button onClick={onMov} className={`flex-1 py-2.5 rounded-[10px] text-[14px] font-medium tracking-lemon ${active === "mov" ? "bg-[#333] text-white" : "text-t-secondary"}`}>Movimientos</button></div>; }
 function BackBtn({ onClick }: { onClick?: () => void }) { return <div className="w-10 h-10 rounded-full bg-[#333] flex items-center justify-center cursor-pointer active:scale-95 transition-transform" onClick={onClick}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg></div>; }
-function C40({ children }: { children: React.ReactNode }) { return <div className="w-10 h-10 rounded-full bg-[#1a1a1a] flex items-center justify-center">{children}</div>; }
+function C40({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) { return <div className={`w-10 h-10 rounded-full bg-[#1a1a1a] flex items-center justify-center${onClick ? " cursor-pointer active:scale-95 transition-transform" : ""}`} onClick={onClick}>{children}</div>; }
 function DetailRow({ label, value, mono, green }: { label: string; value: string; mono?: boolean; green?: boolean }) { return <div className="flex justify-between items-center"><span className="text-white text-[15px] font-medium tracking-lemon">{label}</span><span className={`text-[14px] tracking-lemon text-right max-w-[60%] ${mono ? "font-mono text-[13px] text-t-secondary" : green ? "font-medium" : "font-medium text-t-secondary"}`} style={green ? { color: "#00f068" } : {}}>{value}</span></div>; }
 function MovRow({ icon, title, sub, amount, suffix, sub2, positive, highlight }: { icon: React.ReactNode; title: string; sub: string; amount: string; suffix?: string; sub2?: string; positive?: boolean; highlight?: boolean }) { return <div className={`flex items-center gap-3 py-3.5 ${highlight ? "slide-up" : ""}`}><div className="w-[44px] h-[44px] rounded-full overflow-hidden flex items-center justify-center flex-shrink-0">{icon}</div><div className="flex-1 min-w-0"><p className="text-[15px] font-medium tracking-lemon" style={{ color: highlight ? "#00f068" : "#fff" }}>{title}</p><p className="text-t-tertiary text-[13px] tracking-lemon">{sub}</p></div><div className="text-right flex-shrink-0"><p className="text-[14px] font-medium tracking-lemon" style={{ color: positive ? "#00f068" : "#fff" }}>{amount}{suffix || ""}</p>{sub2 && <p className="text-t-tertiary text-[12px] tracking-lemon">{sub2}</p>}</div></div>; }
 function TabBar() { return <div className="absolute bottom-0 left-0 right-0 bg-black border-t border-[#1a1a1a] px-2 pb-7 pt-2 flex justify-around z-30"><TI icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>} label="Inicio" active /><TI icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>} label="Crypto" /><div className="flex flex-col items-center"><div className="w-[52px] h-[52px] rounded-full flex items-center justify-center -mt-5 border-2 border-[#1a1a1a]" style={{ background: "#00f068" }}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 7h4v4H7zM13 7h4v4h-4zM7 13h4v4H7z"/></svg></div></div><TI icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>} label="Mini-Apps" /><TI icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><path d="M1 10h22"/></svg>} label="Tarjeta" /></div>; }
